@@ -18,6 +18,7 @@
 mov r0,#0
 bl SetUnlock
 
+@---------------------MENU---------------------------
 menu:
 	@check blue keypad
 	swi SWI_CheckKey
@@ -39,7 +40,7 @@ menu:
 	
 	b menu
 	
-	
+@----------------------------------------------------
 @--------------------WAITING-------------------------	
 Wait:
 	stmfd sp!, {r0-r1,lr}
@@ -57,32 +58,37 @@ WaitDone:
 	ldmfd sp!,{r0-r1,pc}
 	
 @----------------------------------------------------
-	
+
+@------------------PROGRAMMING MODE------------------
 Programming:
 	stmfd sp!, {r0-r1,lr}
 	bl LoadDisplay
 	mov r2,#1000
 	bl Wait
 	swi SWI_ClrLCD
+	bl SetUnlock
 	ldmfd sp!,{r0-r1,pc}
 	bx lr
-	
+@----------------------------------------------------
+@-------------------LOCK BUTTON----------------------
 ToggleLock:
 	stmfd sp!, {r0-r1,lr}
 	bl LoadDisplay
 	mov r2,#1000
 	bl Wait
 	swi SWI_ClrLCD
+	bl SetUnlock
 	ldmfd sp!,{r0-r1,pc}
 	bx lr
-
+@----------------LCD DISPLAY-------------------------
 LoadDisplay:
 	mov r0,#0
 	mov r1,#0
 	ldr r2,=WIP
 	swi SWI_DispStr
 	bx lr
-	
+@----------------------------------------------------
+@-----------------EMBEST FUNCTIONS-------------------
 BothLED:
 	stmfd sp!, {r0-r1,lr}
 	mov r0,#3
@@ -91,11 +97,6 @@ BothLED:
 	bl Wait
 	bl LEDOff
 	ldmfd sp!,{r0-r1,pc}
-	bx lr
-
-LEDOff:
-	mov r0,#0
-	swi SWI_LightLED
 	bx lr
 	
 LeftLED:
@@ -118,6 +119,12 @@ RightLED:
 	ldmfd sp!,{r0-r1,pc}
 	bx lr
 	
+LEDOff:
+	mov r0,#0
+	swi SWI_LightLED
+	bx lr
+@----------------------------------------------------
+@----------------SET 8 SEGMENT DISPLAY---------------
 SetLock:
 	ldr r1,=Digits
 	ldr r0,[r1,#+4]
@@ -159,7 +166,8 @@ SetSuccess:
 	ldr r0,[r1,#+20]
 	swi SWI_DispNum
 	bx lr
-	
+@----------------------------------------------------
+@------------------EXTRA FUNCTIONS-------------------	
 ClearRegisters:
 	mov r0,#0
 	mov r1,#0
@@ -173,6 +181,7 @@ ClearRegisters:
 	mov r9,#0
 	bx lr
 	
+@----------------STRINGS/VARIABLES/ETC---------------	
 Digits:
 	.word SEG_B|SEG_C|SEG_D|SEG_E|SEG_G|SEG_P				@Unlock
 	.word SEG_D|SEG_E|SEG_G|SEG_P 							@Lock
