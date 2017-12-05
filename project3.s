@@ -34,10 +34,15 @@ bl SetUnlock
 menu:	
 	@check black buttons
 	swi SWI_CheckBttn
-	cmp r0,#1					@right black button
-	bleq SetProgram
+	cmp r0,#1
 	bleq RightLED
+	bl GetLockState
+	cmp r1,#1
+	beq menu3
+	cmp r0,#1					@right black button
 	bleq Programming
+	
+menu3:
 	cmp r0,#2					@left black button
 	bne menu2
 	bl LeftLED
@@ -124,6 +129,7 @@ WaitDone:
 @------------------PROGRAMMING MODE------------------
 Programming:
 	stmfd sp!, {r0-r1,lr}
+	bleq SetProgram
 	mov r2,#0
 	mov r3,#0
 	mov r4,#0
