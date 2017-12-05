@@ -16,18 +16,22 @@
 .equ SEG_G,0x01
 .equ SEG_P,0x10
 
-.equ VAR_HeapAddress, 0x00002040
+.equ VAR_lockstate, 0x00002040
+.equ VAR_PINCorrect, 0x00002044
+
+.equ VAR_PIN, 0x00002048
 
 mov r0,#0
+ldr r1,=VAR_PINCorrect
+str r0,[r1]
+
+ldr r1,=VAR_lockstate
+mov r0,#0
+str r0,[r1]
 bl SetUnlock
 
 @---------------------MENU---------------------------
-menu:
-	@check blue keypad
-	swi SWI_CheckKey
-	cmp r0,#0
-	blne BothLED
-
+menu:	
 	@check black buttons
 	swi SWI_CheckBttn
 	cmp r0,#1					@right black button
@@ -35,12 +39,70 @@ menu:
 	bleq RightLED
 	bleq Programming
 	cmp r0,#2					@left black button
-	bleq SetLock
-	bleq LeftLED
+	bne menu2
+	bl LeftLED
+	bl GetLockState
+	cmp r1,#0
+	bne CheckUnlock
+	bl CorrectReset
 	bleq ToggleLock
+	
+menu2:
+	
+	@check lockstate
+	bl GetLockState
+	cmp r1,#1
+	beq Listening
 
 	b menu
 
+@----------------------------------------------------
+@-------------------LISTENING------------------------
+Listening:
+	swi SWI_CheckKey
+	mov r9,#0
+	
+ListeningSkipSwi:
+	cmp r0,#0
+	beq ListeningEnd
+	blne BothLED
+	add r9,r9,#1
+	mov r8,r0
+	
+	ldr r1,=VAR_PINCorrect
+	ldr r2,[r1]
+	
+	ldr r1,=VAR_PIN
+	ldr r3,[r1]
+	
+	cmp r2,r3
+	bge ListeningFail
+	
+	mov r4,r2,lsl #2
+	add r4,r4,#4
+	add r1,r1,r4
+	ldr r4,[r1]
+	
+	cmp r8,r4
+	bne ListeningFail
+	
+	add r2,r2,#1
+	ldr r1,=VAR_PINCorrect
+	str r2,[r1]
+	
+	b ListeningEnd
+	
+ListeningFail:
+	bl CorrectReset
+	
+	cmp r9,#2
+	bge ListeningEnd
+	mov r0,r8
+	b ListeningSkipSwi
+	
+ListeningEnd:
+	b menu
+	
 @----------------------------------------------------
 @--------------------WAITING-------------------------
 Wait:
@@ -66,8 +128,10 @@ Programming:
 	mov r3,#0
 	mov r4,#0
 	cmp r9,#0
-	movne r1,r9
-	bleq CreateHeap
+	ldr r9,=VAR_PIN
+	bl GetPINLength
+	cmp r1,#4
+	addeq r9,r9,#20
 ProgrammingLoop:
 	swi SWI_CheckBttn
 	cmp r0,#1
@@ -80,8 +144,7 @@ ProgrammingLoop:
 	b ProgrammingLoop
 ConfirmStart:
 	str r3,[r9]
-	ldr r0,=VAR_HeapAddress
-	ldr r0,[r0]
+	ldr r0,=VAR_PIN
 	ldr r0,[r0]
 	tst r0,#0
 	bne ForgetStart
@@ -104,6 +167,8 @@ ConfirmLoop:
 
 	b ConfirmLoop
 ConfirmCheck:
+	ldr r0,=VAR_PIN
+	ldr r8,[r0]
 	cmp r8,r4
 	beq EndProgramming
 	mov r2,#0
@@ -113,7 +178,7 @@ EndProgramming:
 	beq ProgramSuccess
 
 ProgramFail:
-	ldr r0,=VAR_HeapAddress
+	ldr r0,=VAR_PIN
 	ldr r0,[r0]
 	mov r2,#0
 	str r2,[r0]
@@ -122,7 +187,7 @@ ProgramFail:
 	bx lr
 
 ProgramSuccess:
-	sub r9,r9,#20
+	add r9,r9,#16
 	bl SetSuccess
 	ldmfd sp!,{r0-r1,pc}
 	bx lr
@@ -164,14 +229,37 @@ ForgetEnd:
 @----------------------------------------------------
 @-------------------LOCK BUTTON----------------------
 ToggleLock:
-	stmfd sp!, {r0-r1,lr}
-	bl LoadDisplay
-	mov r2,#1000
-	bl Wait
-	swi SWI_ClrLCD
-	bl SetUnlock
-	ldmfd sp!,{r0-r1,pc}
+	stmfd sp!, {r0-r8,lr}
+	bl GetPINLength
+	cmp r1,#0
+	beq ToggleLockFail
+	
+	bl SetLockState
+	bl SetLock
+	ldmfd sp!,{r0-r8,pc}
 	bx lr
+	
+ToggleLockFail:
+	ldmfd sp!,{r0-r8,pc}
+	bx lr
+	
+CheckUnlock:
+	bl GetPINLength
+	mov r3,r1
+	
+	ldr r1,=VAR_PINCorrect
+	ldr r2,[r1]
+	
+	cmp r2,r3
+	bne UnlockEnd
+	bl SetUnlockState
+	bl SetUnlock
+	
+UnlockEnd:
+	ldr r1,=VAR_PINCorrect
+	mov r2,#0
+	str r2,[r1]
+	b menu	
 @----------------LCD DISPLAY-------------------------
 LoadDisplay:
 	mov r0,#0
@@ -260,6 +348,34 @@ SetSuccess:
 	bx lr
 @----------------------------------------------------
 @------------------EXTRA FUNCTIONS-------------------
+GetPINLength:
+	ldr r0,=VAR_PIN
+	ldr r1,[r0]
+	bx lr
+
+GetLockState:
+	ldr r2,=VAR_lockstate
+	ldr r1,[r2]
+	bx lr
+	
+SetLockState:
+	ldr r1,=VAR_lockstate
+	mov r0,#1
+	str r0,[r1]
+	bx lr
+
+SetUnlockState:
+	ldr r1,=VAR_lockstate
+	mov r0,#0
+	str r0,[r1]
+	bx lr
+
+CorrectReset:
+	ldr r1,=VAR_PINCorrect
+	mov r2,#0
+	str r2,[r1]
+	bx lr
+
 ClearRegisters:
 	mov r0,#0
 	mov r1,#0
@@ -271,14 +387,6 @@ ClearRegisters:
 	mov r7,#0
 	mov r8,#0
 	mov r9,#0
-	bx lr
-
-CreateHeap:
-	mov r0,#20
-	swi SWI_Heap
-	mov r9,r0
-	ldr r7,=VAR_HeapAddress
-	str r0,[r7]
 	bx lr
 
 @----------------STRINGS/VARIABLES/ETC---------------
